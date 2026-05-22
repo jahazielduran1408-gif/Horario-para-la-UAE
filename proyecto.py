@@ -9,12 +9,11 @@ import pytesseract
 import streamlit as st
 
 # === CONFIGURACIÓN GLOBAL DEL OCR ===
-# NOTA: Si lo corres en tu PC local, mantén esta línea. Si lo subes a internet, 
-# el servidor debe tener Tesseract instalado y la ruta cambiará.
+# NOTA: En el servidor de internet (Linux), Tesseract se autolocaliza gracias a packages.txt.
 # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # =====================================================================
-# FUNCIONES AUXILIARES Y PROCESAMIENTO (Tu lógica original intacta)
+# FUNCIONES AUXILIARES Y PROCESAMIENTO OPTIMIZADO
 # =====================================================================
 def convertir_bloque_a_24h(bloque_12h):
     try:
@@ -37,12 +36,24 @@ def convertir_bloque_a_24h(bloque_12h):
 
 def interpretar_dias(texto_dias):
     columnas = []
-    if "L" in texto_dias: columnas.append(2)
-    if "Ma" in texto_dias or "MA" in texto_dias: columnas.append(3)
-    if "Mi" in texto_dias or "MI" in texto_dias: columnas.append(4)
-    if "J" in texto_dias: columnas.append(5)
-    if "V" in texto_dias: columnas.append(6)
-    return columnas
+    t = texto_dias.lower().replace(" ", "")
+    
+    if "l" in t: 
+        columnas.append(2)
+    if "ma" in t or "mar" in t: 
+        columnas.append(3)
+    if "mi" in t or "mie" in t: 
+        columnas.append(4)
+    if "j" in t: 
+        columnas.append(5)
+    if "v" in t: 
+        columnas.append(6)
+        
+    if "j-v" in t or "j- v" in t:
+        if 5 not in columnas: columnas.append(5)
+        if 6 not in columnas: columnas.append(6)
+        
+    return sorted(list(set(columnas)))
 
 def procesar_texto_ocr(texto_raw, preferencias):
     matriz_clases = {}
@@ -55,41 +66,60 @@ def procesar_texto_ocr(texto_raw, preferencias):
         linea = linea.strip()
         if not linea: continue
         
-        if "créd" in linea.lower() or "cred" in linea.lower():
-            materia_actual = re.sub(r'[^A-ZÁÉÍÓÚÑ\s]', '', linea.split("(")[0]).strip()
+        if "créd" in linea.lower() or "cred" in linea.lower() or "ó" in linea.lower() or "☑" in linea:
+            partes_materia = re.split(r'\(|\d', linea)
+            if partes_materia:
+                posible_materia = re.sub(r'[^A-ZÁÉÍÓÚÑ\s\-\:]', '', partes_materia[0].replace("☑", "")).strip()
+                if len(posible_materia) > 4:
+                    materia_actual = posible_materia
             continue
             
-        if "lugares" in linea.lower() or "dispon" in linea.lower() or "pm" in linea.lower() or "am" in linea.lower() or "06:00" in linea:
-            linea_limpia = linea.replace("=", "-").replace("~", "-")
-            match_hora = re.search(r"(\d{1,2}:\d{2}\s*[A-Z]{2}\s*-\s*\d{1,2}:\d{2}\s*[A-Z]{2})", linea_limpia, re.IGNORECASE)
+        match_hora = re.search(r"(\d{1,2}:\d{2}\s*[A-Z]{2}\s*-\s*\d{1,2}:\d{2}\s*[A-Z]{2})", linea, re.IGNORECASE)
+        
+        if match_hora and materia_actual:
+            bloque_12h = match_hora.group(1)
+            bloque_24h = convertir_bloque_a_24h(bloque_12h)
             
-            if match_hora and materia_actual:
-                bloque_12h = match_hora.group(1)
-                bloque_24h = convertir_bloque_a_24h(bloque_12h)
-                partes_linea = linea_limpia.split(bloque_12h)
+            comp = bloque_24h.split("-")
+            if len(comp) == 2 and comp[0] == comp[1]: continue
+            
+            partes_linea = linea.split(bloque_12h)
+            maestro = "POR SELECCIONAR"
+            if len(partes_linea) > 1:
+                resto = partes_linea[1]
+                if "lugares" in resto.lower():
+                    maestro = re.split(r'(?i)lugares', resto)[0].strip()
+                elif "dispon" in resto.lower():
+                    maestro = re.split(r'(?i)dispon', resto)[0].strip()
+                else:
+                    maestro = resto.strip()
+            
+            maestro = re.sub(r'^[^a-zA-ZÁÉÍÓÚÑ]+', '', maestro)
+            maestro = re.sub(r'(?i)\b(y\s*mi|mi)\b.*', '', maestro).strip()
+            if not maestro: maestro = "POR SELECCIONAR"
+            
+            if maestro_excluido and maestro_excluido in maestro.upper(): continue
+            if preferencias["horarios"] and bloque_24h not in preferencias["horarios"]: continue
+            
+            texto_antes_hora = partes_linea[0]
+            lista_dias = interpretar_dias(texto_antes_hora)
+            
+            if not lista_dias:
+                lista_dias = interpretar_dias(linea)
                 
-                maestro = "POR SELECCIONAR"
-                if len(partes_linea) > 1:
-                    maestro = partes_linea[1].split("Lugares")[0].strip()
+            if not lista_dias: continue
+            
+            bloques_horarios.add(bloque_24h)
+            if bloque_24h not in matriz_clases:
+                matriz_clases[bloque_24h] = {}
                 
-                if maestro_excluido and maestro_excluido in maestro.upper(): continue
-                if preferencias["horarios"] and bloque_24h not in preferencias["horarios"]: continue
-                
-                texto_antes_hora = partes_linea[0]
-                lista_dias = interpretar_dias(texto_antes_hora)
-                
-                bloques_horarios.add(bloque_24h)
-                if bloque_24h not in matriz_clases:
-                    matriz_clases[bloque_24h] = {}
-                    
-                for dia_num in lista_dias:
-                    mapa_inverso = {2: "L", 3: "MA", 4: "MI", 5: "J", 6: "V"}
-                    if not preferencias["dias"] or mapa_inverso[dia_num] in preferencias["dias"]:
-                        matriz_clases[bloque_24h][dia_num] = (materia_actual, maestro)
+            for dia_num in lista_dias:
+                mapa_inverso = {2: "L", 3: "MA", 4: "MI", 5: "J", 6: "V"}
+                if not preferencias["dias"] or mapa_inverso[dia_num] in preferencias["dias"]:
+                    matriz_clases[bloque_24h][dia_num] = (materia_actual, maestro)
 
     return sorted(list(bloques_horarios)), matriz_clases
 
-# Modificado para guardar el Excel en memoria y permitir la descarga web
 def crear_excel_horario_en_memoria(nombre_alumno, bloques_horarios, matriz_clases):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -176,27 +206,24 @@ def crear_excel_horario_en_memoria(nombre_alumno, bloques_horarios, matriz_clase
         col_letter = get_column_letter(col_idx)
         ws.column_dimensions[col_letter].width = 30
 
-    # Guardar en un buffer de memoria en vez de en el disco duro
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
     return output
 
 # =====================================================================
-# INTERFAZ WEB CON STREAMLIT
+# INTERFAZ DE USUARIO (STREAMLIT)
 # =====================================================================
 st.set_page_config(page_title="Generador de Horarios", page_icon="📅", layout="centered")
 
 st.title("📅 Generador Automatizado de Horarios")
 st.markdown("Sube la captura de tu carga académica y descarga tu horario optimizado en Excel.")
 
-# Formulario de configuración (Preferencias del Alumno)
 st.sidebar.header("⚙️ Preferencias del Alumno")
 dias_input = st.sidebar.text_input("Días disponibles (ej: L, Ma, Mi)", placeholder="Dejar vacío para todos")
 horas_input = st.sidebar.text_input("Horarios preferidos en 24h (ej: 14:00-16:00)", placeholder="Dejar vacío para todos")
 maestro_input = st.sidebar.text_input("Maestro a excluir de la lista")
 
-# Variables de control
 dias_preferidos = [dia.strip().upper() for dia in dias_input.split(",")] if dias_input.strip() else []
 horas_preferidas = [hora.strip() for hora in horas_input.split(",")] if horas_input.strip() else []
 maestro_excluido = maestro_input.strip().upper() if maestro_input.strip() else None
@@ -207,24 +234,20 @@ preferencias = {
     "maestro_excluido": maestro_excluido
 }
 
-# Inputs principales en la página
 nombre_alumno = st.text_input("👤 Nombre completo del alumno:")
 archivo_subido = st.file_uploader("📸 Sube la captura de pantalla de tu horario (JPG, JPEG, PNG)", type=["jpg", "jpeg", "png"])
 
 if archivo_subido and nombre_alumno:
     st.success("¡Imagen cargada con éxito!")
     
-    # Botón para activar el proceso
     if st.button("🚀 Procesar Horario y Generar Excel"):
         with st.spinner("Procesando la imagen con OCR..."):
             try:
-                # Abrir imagen directamente desde la web
                 imagen_real = Image.open(archivo_subido)
                 texto_real_ocr = pytesseract.image_to_string(imagen_real)
                 
                 bloques, matriz_final = procesar_texto_ocr(texto_real_ocr, preferencias)
                 
-                # Salvavidas de respaldo (Tu lógica original intacta)
                 if len(matriz_final) == 0:
                     st.warning("Se detectó ruido visual en la captura. Aplicando datos de respaldo...")
                     texto_respaldo_perfecto = """
@@ -241,10 +264,8 @@ if archivo_subido and nombre_alumno:
                     """
                     bloques, matriz_final = procesar_texto_ocr(texto_respaldo_perfecto, preferencias)
                 
-                # Generar el Excel en memoria
                 excel_data = crear_excel_horario_en_memoria(nombre_alumno, bloques, matriz_final)
                 
-                # Botón de descarga nativo de la web
                 st.balloons()
                 st.download_button(
                     label="📥 Descargar Horario en Excel",
