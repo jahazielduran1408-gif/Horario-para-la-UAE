@@ -3,3 +3,4 @@ pytesseract
 Pillow
 pandas
 numpy
+openpyxl
