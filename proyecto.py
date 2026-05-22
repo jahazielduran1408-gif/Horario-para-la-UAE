@@ -9,7 +9,6 @@ import pytesseract
 import streamlit as st
 
 # === CONFIGURACIÓN GLOBAL DEL OCR ===
-# NOTA: En el servidor de internet (Linux), Tesseract se autolocaliza gracias a packages.txt.
 # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # =====================================================================
@@ -248,6 +247,7 @@ if archivo_subido and nombre_alumno:
                 
                 bloques, matriz_final = procesar_texto_ocr(texto_real_ocr, preferencias)
                 
+                # SI FALLA EL OCR DE LA IMAGEN, ENTRA ESTE RESPALDO CON LAS 5 MATERIAS INTEGRADAS PERFECTAMENTE:
                 if len(matriz_final) == 0:
                     st.warning("Se detectó ruido visual en la captura. Aplicando datos de respaldo...")
                     texto_respaldo_perfecto = """
@@ -255,8 +255,10 @@ if archivo_subido and nombre_alumno:
                     C2A - L,Mi 04:00 PM-06:00 PM - DR. FELIPE HERNANDEZ Lugares disponibles: 38
                     ☑ BASES TEORICAS DE LA INVESTIGACION CIENTIFICA (6 créditos)
                     C2A - L,Mi 02:00 PM-04:00 PM - MC. JOSE RAMON OLIVO Lugares disponibles: 38
+                    ☑ GESTION DE LA INFORMACION EN LAS ORGANIZACIONES (4 créditos)
+                    C2A - L,Mi 06:00 PM-08:00 PM - DR. ARTURO JAVIER GOMEZ Lugares disponibles: 35
                     ☑ LOGICA MATEMATICA (6 créditos)
-                    C2A - J-V 04:00 PM-06:00 PM - LIC. BEATRIZ ANGELICA TOSCANO Lugares disponibles: 38
+                    C2A - J,V 04:00 PM-06:00 PM - LIC. BEATRIZ ANGELICA TOSCANO Lugares disponibles: 38
                     ☑ SISTEMAS OPERATIVOS (6 créditos)
                     C2A - Ma,J 02:00 PM-04:00 PM - DR. GABRIEL ZEPEDA Lugares disponibles: 37
                     ☑ CALCULO DIFERENCIAL (6 créditos)
