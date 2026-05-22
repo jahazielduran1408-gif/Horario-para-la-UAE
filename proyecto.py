@@ -11,7 +11,7 @@ import streamlit as st
 # === CONFIGURACIÓN GLOBAL DEL OCR ===
 # NOTA: Si lo corres en tu PC local, mantén esta línea. Si lo subes a internet, 
 # el servidor debe tener Tesseract instalado y la ruta cambiará.
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 # =====================================================================
 # FUNCIONES AUXILIARES Y PROCESAMIENTO (Tu lógica original intacta)
